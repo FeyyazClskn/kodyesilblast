@@ -174,7 +174,6 @@
     padding: 16px 48px;
     text-align: center;
     margin-bottom: 28px;
-    backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   }
 
@@ -460,51 +459,33 @@
   }
 
   .cell.ex {
-    animation: shatterEx .38s cubic-bezier(0.25, 1, 0.5, 1) forwards !important;
+    animation: shatterEx .35s ease-out forwards !important;
     z-index: 10;
   }
 
   @keyframes shatterEx {
     0% {
       transform: scale(1) rotate(0deg);
-      filter: brightness(1);
-      border-radius: 8px;
       opacity: 1;
     }
-    26% {
-      transform: scale(1.4) rotate(8deg);
-      filter: brightness(3);
-      border-radius: 8px;
-      opacity: 1;
-    }
-    65% {
-      transform: scale(1.8) rotate(15deg);
-      filter: brightness(1.5);
-      border-radius: 50%;
-      opacity: 0.8;
+    40% {
+      transform: scale(1.3) rotate(5deg);
+      opacity: 0.9;
     }
     100% {
-      transform: scale(0.2) rotate(30deg);
-      filter: brightness(0);
+      transform: scale(0) rotate(15deg);
       opacity: 0;
     }
-  }
-
-  @keyframes ex {
-    0% { transform: scale(1); opacity: 1; filter: brightness(2.5); }
-    55% { transform: scale(1.9); opacity: .6; }
-    100% { transform: scale(0); opacity: 0; }
   }
 
   /* Particles */
   .particle {
     position: absolute;
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     pointer-events: none;
     z-index: 100;
-    box-shadow: 0 0 6px currentColor;
     animation: fadePart 0.4s ease-out forwards;
   }
 
@@ -602,7 +583,6 @@
     gap: 2px;
     color: var(--text-primary);
     transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
-    backdrop-filter: blur(8px);
   }
 
   .pb:active {
@@ -661,7 +641,6 @@
     border: 1.5px dashed rgba(255,255,255,0.08);
     border-radius: 14px;
     box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -793,7 +772,6 @@
     padding: 14px 44px;
     text-align: center;
     margin-bottom: 10px;
-    backdrop-filter: blur(10px);
   }
 
   .score-box .lbl {
@@ -866,7 +844,6 @@
   .obtn.s {
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.1);
-    backdrop-filter: blur(8px);
   }
 
   .obtn.s:hover {
@@ -1032,7 +1009,9 @@
   ];
 
   let board, score, bestScore, combo, powers, pieces, activePwr, gameOver;
-  let drag = { on: false, pi: -1 };
+  let drag = { on: false, pi: -1, lastR: -1, lastC: -1 };
+  let dragX = 0, dragY = 0;
+  let dragAnimFrame = null;
   let actx = null;
   let appScale = 1;
   let previousState = null;
@@ -1441,7 +1420,7 @@
     if (gameOver || activePwr) return;
     e.preventDefault(); e.stopPropagation();
     initAudio();
-    drag.on = true; drag.pi = idx;
+    drag.on = true; drag.pi = idx; drag.lastR = -1; drag.lastC = -1;
     const p = pieces[idx];
     document.getElementById('pc' + idx).classList.add('dragging');
     const ghost = document.getElementById('drag-ghost');
@@ -1460,38 +1439,52 @@
   function onDragMove(e) {
     if (!drag.on) return;
     e.preventDefault();
-    moveGhost(e.clientX, e.clientY);
-    clearHL();
-    const pos = getGridPos(e.clientX, e.clientY);
-    if (pos) {
-      const p = pieces[drag.pi];
-      const ok = canPlace(p.shape, pos.r, pos.c);
-      p.shape.forEach((row, dr) => row.forEach((v, dc) => {
-        if (!v) return;
-        const el = document.getElementById(`c${pos.r + dr}_${pos.c + dc}`);
-        if (el) {
-          el.classList.add(ok ? 'ok' : 'no');
-          if (ok) el.style.setProperty('--preview-fill', p.fill);
+    dragX = e.clientX; dragY = e.clientY;
+    if (!dragAnimFrame) {
+      dragAnimFrame = requestAnimationFrame(() => {
+        dragAnimFrame = null;
+        if (!drag.on) return;
+        moveGhost(dragX, dragY);
+        
+        const pos = getGridPos(dragX, dragY);
+        const r = pos ? pos.r : -1;
+        const c = pos ? pos.c : -1;
+        if (r === drag.lastR && c === drag.lastC) return;
+        drag.lastR = r; drag.lastC = c;
+        
+        clearHL();
+        if (pos) {
+          const p = pieces[drag.pi];
+          const ok = canPlace(p.shape, pos.r, pos.c);
+          p.shape.forEach((row, dr) => row.forEach((v, dc) => {
+            if (!v) return;
+            const el = document.getElementById(`c${pos.r + dr}_${pos.c + dc}`);
+            if (el) {
+              el.classList.add(ok ? 'ok' : 'no');
+              if (ok) el.style.setProperty('--preview-fill', p.fill);
+            }
+          }));
+          if (ok) {
+            const tempBoard = board.map(r => [...r]);
+            p.shape.forEach((row, dr) => row.forEach((v, dc) => {
+              if (v) tempBoard[pos.r + dr][pos.c + dc] = { fill: p.fill };
+            }));
+            const fr = [], fc = [];
+            for (let r = 0; r < ROWS; r++) if (tempBoard[r].every(c => c)) fr.push(r);
+            for (let c = 0; c < COLS; c++) if (tempBoard.every(r => r[c])) fc.push(c);
+            if (fr.length || fc.length) {
+              fr.forEach(r => { for (let c = 0; c < COLS; c++) document.getElementById(`c${r}_${c}`)?.classList.add('preview-clear'); });
+              fc.forEach(c => { for (let r = 0; r < ROWS; r++) document.getElementById(`c${r}_${c}`)?.classList.add('preview-clear'); });
+            }
+          }
         }
-      }));
-      if (ok) {
-        const tempBoard = board.map(r => [...r]);
-        p.shape.forEach((row, dr) => row.forEach((v, dc) => {
-          if (v) tempBoard[pos.r + dr][pos.c + dc] = { fill: p.fill };
-        }));
-        const fr = [], fc = [];
-        for (let r = 0; r < ROWS; r++) if (tempBoard[r].every(c => c)) fr.push(r);
-        for (let c = 0; c < COLS; c++) if (tempBoard.every(r => r[c])) fc.push(c);
-        if (fr.length || fc.length) {
-          fr.forEach(r => { for (let c = 0; c < COLS; c++) document.getElementById(`c${r}_${c}`)?.classList.add('preview-clear'); });
-          fc.forEach(c => { for (let r = 0; r < ROWS; r++) document.getElementById(`c${r}_${c}`)?.classList.add('preview-clear'); });
-        }
-      }
+      });
     }
   }
 
   function onDragEnd(e) {
     if (!drag.on) return;
+    if (dragAnimFrame) { cancelAnimationFrame(dragAnimFrame); dragAnimFrame = null; }
     document.removeEventListener('pointermove', onDragMove);
     document.removeEventListener('pointerup', onDragEnd);
     document.getElementById('drag-ghost').style.display = 'none';
@@ -1609,18 +1602,21 @@
     setTimeout(() => { renderBoard(); checkClear(() => { checkGameOver(); }); setMsg(''); }, 380);
   }
 
+  let lastPwrR = -1, lastPwrC = -1;
   document.getElementById('board').addEventListener('pointermove', e => {
     if (!activePwr || drag.on) return;
-    clearHL();
     const rect = document.getElementById('board').getBoundingClientRect();
     const step = (CS + GAP) * appScale;
     const r = Math.max(0, Math.min(ROWS - 1, Math.floor((e.clientY - rect.top - PAD * appScale) / step)));
     const c = Math.max(0, Math.min(COLS - 1, Math.floor((e.clientX - rect.left - PAD * appScale) / step)));
+    if (r === lastPwrR && c === lastPwrC) return;
+    lastPwrR = r; lastPwrC = c;
+    clearHL();
     if (activePwr === 'bomb') { for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const el = document.getElementById(`c${r + dr}_${c + dc}`); if (el) el.classList.add('pwrh'); } }
     else if (activePwr === 'lightning') { for (let c2 = 0; c2 < COLS; c2++) { const el = document.getElementById(`c${r}_${c2}`); if (el) el.classList.add('pwrh'); } }
     else { const el = document.getElementById(`c${r}_${c}`); if (el) el.classList.add('pwrh'); }
   });
-  document.getElementById('board').addEventListener('pointerleave', () => clearHL());
+  document.getElementById('board').addEventListener('pointerleave', () => { clearHL(); lastPwrR = -1; lastPwrC = -1; });
 
   function checkClear(onDone) {
     const fr = [], fc = [];
