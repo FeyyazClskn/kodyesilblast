@@ -1036,6 +1036,7 @@
   let actx = null;
   let appScale = 1;
   let previousState = null;
+  let comboTimeout = null;
 
   function saveGameState() {
     if (gameOver) return;
@@ -1182,10 +1183,12 @@
     root.classList.toggle('combo-active', combo >= 3);
     root.classList.toggle('super-combo', combo >= 3);
 
-    const bgMap = { '': '#07071a', 'theme-neon': '#14001a', 'theme-ice': '#00131a', 'theme-gold': '#1a1300' };
-    document.body.style.backgroundColor = bgMap[currentTheme];
+    const bgMap = { '': '#0a0f0d', 'theme-neon': '#0a0a1a', 'theme-ice': '#050d14', 'theme-gold': '#110f05' };
+    document.body.style.backgroundColor = bgMap[currentTheme] || '#0a0f0d';
 
     const banner = document.getElementById('combo-banner');
+    clearTimeout(comboTimeout);
+    
     if (combo >= 3) {
       banner.textContent = 'KOMBO x' + combo;
       let fs = 24;
@@ -1194,6 +1197,11 @@
       else if (combo >= 6) fs = 40;
       banner.style.fontSize = fs + 'px';
       banner.classList.add('show');
+      
+      comboTimeout = setTimeout(() => {
+        banner.classList.remove('show');
+        root.classList.remove('combo-active', 'super-combo');
+      }, 3000);
     } else {
       banner.classList.remove('show');
     }
